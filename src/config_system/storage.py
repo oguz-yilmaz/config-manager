@@ -7,3 +7,5 @@ class Storage:
     def get_config(self, path: str) -> Optional[dict]:
         value = self.client.get(f"/config/{path}")
         return value[0] if value[0] else None
+    def put_config(self, path: str, data: dict):
+        self.client.put(f"/config/{path}", str(data))
