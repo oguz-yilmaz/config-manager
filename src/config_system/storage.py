@@ -9,3 +9,13 @@ class Storage:
         return value[0] if value[0] else None
     def put_config(self, path: str, data: dict):
         self.client.put(f"/config/{path}", str(data))
+class StorageError(Exception):
+    pass
+
+def safe_put(self, key: str, value: str) -> bool:
+    try:
+        self.client.put(key, value)
+        return True
+    except Exception as e:
+        logger.error(f"Storage error: {str(e)}")
+        raise StorageError(str(e))
