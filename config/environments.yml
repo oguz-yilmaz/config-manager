@@ -1,0 +1,9 @@
+development:
+  etcd_host: localhost
+  etcd_port: 2379
+  log_level: DEBUG
+
+production:
+  etcd_host: etcd.service
+  etcd_port: 2379
+  log_level: INFO
