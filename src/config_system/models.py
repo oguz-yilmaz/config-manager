@@ -17,3 +17,9 @@ class Version:
     
     def __str__(self):
         return f"{self.major}.{self.minor}.{self.patch}"
+class AuditEvent:
+    def __init__(self, user: str, action: str, resource: str):
+        self.user = user
+        self.action = action
+        self.resource = resource
+        self.timestamp = datetime.utcnow()
