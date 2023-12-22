@@ -1,25 +1,34 @@
 from datetime import datetime
-from typing import Dict
-from pydantic import BaseModel
+from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
 
 class ConfigVersion(BaseModel):
     version: str
     data: Dict
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    comment: Optional[str] = None
+    user: Optional[str] = None
+
+    class Config:
+        json_encoders = {datetime: lambda v: v.isoformat()}
+
+
 class AuditLog(BaseModel):
+    id: Optional[int] = None
     action: str
-    timestamp: datetime
+    path: str
     user: str
-class Version:
-    def __init__(self, major: int, minor: int, patch: int):
-        self.major = major
-        self.minor = minor
-        self.patch = patch
-    
-    def __str__(self):
-        return f"{self.major}.{self.minor}.{self.patch}"
-class AuditEvent:
-    def __init__(self, user: str, action: str, resource: str):
-        self.user = user
-        self.action = action
-        self.resource = resource
-        self.timestamp = datetime.utcnow()
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    details: Dict = Field(default_factory=dict)
+
+    class Config:
+        json_encoders = {datetime: lambda v: v.isoformat()}
+
+
+class ConfigSchema(BaseModel):
+    type: str
+    properties: Dict
+    required: List[str] = Field(default_factory=list)
+    additionalProperties: bool = False
