@@ -73,8 +73,45 @@ api_key = auth_manager.create_api_key(roles=["write"])
 print(f"Your API key: {api_key}")
 ```
 
-4. Use the API:
+4. Usage
 ```python
+# 1. Configure and create the API
+from config_system import ConfigurationAPI, AppConfig, SecurityConfig, CORSConfig
+from config_system.auth import AuthManager
+from fastapi import FastAPI
+
+config = AppConfig(
+    security=SecurityConfig(
+        secret_key="your-secret-key"
+    ),
+    cors=CORSConfig(
+        allow_origins=["https://yourdomain.com"],
+        allow_methods=["GET", "PUT"]
+    ),
+    storage=StorageConfig(
+        host="etcd.internal",
+        port=2379
+    ),
+    rate_limit_read="200/minute",
+    rate_limit_write="50/minute"
+)
+
+# Create your main application
+main_app = FastAPI()
+
+# Initialize config system and mount it
+config_api = ConfigurationAPI(config)
+main_app.mount("/config", config_api.app)
+
+# 2. Start your application
+# uvicorn your_app:main_app --reload
+
+# 3. Generate API key (in a separate script/management command)
+auth_manager = AuthManager(secret_key=config.security.secret_key)
+api_key = auth_manager.create_api_key(roles=["write"])
+print(f"Your API key: {api_key}")
+
+# 3. Use the API:
 import requests
 
 # Store configuration
@@ -85,17 +122,19 @@ config_data = {
     }
 }
 
+# Note that now we use /config prefix because we mounted it there
+
 # Update config
 response = requests.put(
     "http://localhost:8000/config/myapp/database",
-    headers={"X-API-Key": "your-api-key"},
+    headers={"X-API-Key": api_key},
     json=config_data
 )
 
 # Get config
 response = requests.get(
     "http://localhost:8000/config/myapp/database",
-    headers={"X-API-Key": "your-api-key"},
+    headers={"X-API-Key": api_key},
     params={"environment": "prod"}
 )
 ```
