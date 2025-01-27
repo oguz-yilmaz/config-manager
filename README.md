@@ -55,87 +55,189 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-1. Start etcd (using Docker):
+Since the app is a FastAPI application, you have different options to run it:
+
+- **Mounting in an Existing FastAPI App**: You can mount the `ConfigurationAPI`
+instance in your existing FastAPI app.
+- **Running as a Standalone App**: You can run the app using `uvicorn` directly.
+
+In both cases, you need to start an etcd instance for storage. And create an
+API key for authentication.
+
+**Start etcd**:
 ```bash
 docker run -d -p 2379:2379 bitnami/etcd:latest -e ALLOW_NONE_AUTHENTICATION=yes
 ```
 
-2. Start the service:
+**Create an API key**:
+```python
+from config_system.auth import AuthManager
+auth_manager = AuthManager(secret_key="your-secret-key")
+
+read_key = auth_manager.create_api_key(roles=["read"])
+print(f"Read API Key: {read_key}")
+
+write_key = auth_manager.create_api_key(roles=["write"])
+print(f"Write API Key: {write_key}")
+
+admin_key = auth_manager.create_api_key(roles=["read", "write", "admin"])
+print(f"Admin API Key: {admin_key}")
+```
+
+We can also go ahead and create the `ConfigurationAPI` instance because in
+both cases, we need to mount it or run it.
+
+```python
+from config_system import ConfigurationAPI, AppConfig, SecurityConfig, CORSConfig, StorageConfig
+from config_system.auth import AuthManager
+
+# Configure with all available options
+config = AppConfig(
+   security=SecurityConfig(
+       secret_key="your-secret-key",
+       token_expiry=3600,  # JWT token expiry in seconds
+       min_password_length=8
+   ),
+   cors=CORSConfig(
+       allow_origins=["https://yourdomain.com"],
+       allow_methods=["GET", "PUT", "POST", "DELETE"],
+       allow_headers=["*"],
+       allow_credentials=True
+   ),
+   storage=StorageConfig(
+       host="etcd.internal",
+       port=2379,
+       username="etcd-user",  # Optional
+       password="etcd-pass",  # Optional
+   ),
+   # Rate limiting
+   rate_limit_read="200/minute",
+   rate_limit_write="50/minute"
+)
+```
+
+### 1. Direct usage (Standalone App without mounting)
+
+```python
+# main.py
+
+# Initialize the API
+config_api = ConfigurationAPI(config)
+
+# Export the FastAPI app
+app = config_api.app
+```
+
+Start the server:
+
 ```bash
-python -m uvicorn src.config_system.api:app --reload
+uvicorn main:app --reload
 ```
 
-3. Create an API key:
-```python
-from config_system.auth import AuthManager
-auth_manager = AuthManager()
-api_key = auth_manager.create_api_key(roles=["write"])
-print(f"Your API key: {api_key}")
-```
+### 2. Mounting in an existing FastAPI app
 
-4. Usage
 ```python
-# 1. Configure and create the API
-from config_system import ConfigurationAPI, AppConfig, SecurityConfig, CORSConfig
-from config_system.auth import AuthManager
 from fastapi import FastAPI
 
-config = AppConfig(
-    security=SecurityConfig(
-        secret_key="your-secret-key"
-    ),
-    cors=CORSConfig(
-        allow_origins=["https://yourdomain.com"],
-        allow_methods=["GET", "PUT"]
-    ),
-    storage=StorageConfig(
-        host="etcd.internal",
-        port=2379
-    ),
-    rate_limit_read="200/minute",
-    rate_limit_write="50/minute"
-)
-
-# Create your main application
+# Your main application
 main_app = FastAPI()
 
-# Initialize config system and mount it
+
+# Initialize the API
 config_api = ConfigurationAPI(config)
+
+# Mount configuration system
 main_app.mount("/config", config_api.app)
+```
 
-# 2. Start your application
-# uvicorn your_app:main_app --reload
+### Using the API
 
-# 3. Generate API key (in a separate script/management command)
-auth_manager = AuthManager(secret_key=config.security.secret_key)
-api_key = auth_manager.create_api_key(roles=["write"])
-print(f"Your API key: {api_key}")
+#### Basic Usage
 
-# 3. Use the API:
+```python
 import requests
 
-# Store configuration
 config_data = {
-    "database": {
-        "host": "{{ env }}.db.example.com",
-        "port": 5432
-    }
+   "database": {
+       "host": "db.example.com",
+       "port": 5432,
+       "max_connections": 100,
+       "ssl": True
+   }
 }
 
-# Note that now we use /config prefix because we mounted it there
+# Schema for validation (optional)
+schema = {
+   "type": "object",
+   "properties": {
+       "database": {
+           "type": "object",
+           "properties": {
+               "host": {"type": "string"},
+               "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+               "max_connections": {"type": "integer", "minimum": 1},
+               "ssl": {"type": "boolean"}
+           },
+           "required": ["host", "port"]
+       }
+   }
+}
 
-# Update config
+# Base URL (depends on how you're running the app)
+# For direct usage:
+base_url = "http://localhost:8000"
+# For mounted usage:
+base_url = "http://localhost:8000/config"
+
+# Store configuration
 response = requests.put(
-    "http://localhost:8000/config/myapp/database",
-    headers={"X-API-Key": api_key},
-    json=config_data
+   f"{base_url}/myapp/database",
+   headers={"X-API-Key": write_key},
+   json=config_data,
+   params={"schema": schema}  # Optional schema validation
 )
 
-# Get config
+# Get configuration
 response = requests.get(
-    "http://localhost:8000/config/myapp/database",
-    headers={"X-API-Key": api_key},
-    params={"environment": "prod"}
+   f"{base_url}/myapp/database",
+   headers={"X-API-Key": read_key},
+   params={"environment": "prod"}  # Environment for template rendering
+)
+
+# Health check
+response = requests.get(f"{base_url}/health")
+```
+
+#### Advanced Usage
+
+```python
+# Store configuration with template variables
+template_config = {
+   "api": {
+       "url": "https://{{ env }}.api.example.com",
+       "timeout": "{{ '30' if env == 'prod' else '5' }}",
+       "retries": "{{ '5' if env == 'prod' else '1' }}"
+   }
+}
+
+# Store it
+response = requests.put(
+   f"{base_url}/myapp/api",
+   headers={"X-API-Key": write_key},
+   json=template_config
+)
+
+# Get for different environments
+prod_config = requests.get(
+   f"{base_url}/myapp/api",
+   headers={"X-API-Key": read_key},
+   params={"environment": "prod"}
+)
+
+dev_config = requests.get(
+   f"{base_url}/myapp/api",
+   headers={"X-API-Key": read_key},
+   params={"environment": "dev"}
 )
 ```
 
