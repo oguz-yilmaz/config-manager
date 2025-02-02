@@ -17,12 +17,21 @@ class StorageError(Exception):
 
 class Storage:
     def __init__(
-        self, host: str = "localhost", port: int = 2379, audit_db: str = "audit.db"
+        self,
+        host: str = "localhost",
+        port: int = 2379,
+        audit_db: str = "audit.db",
+        username: Optional[str] = None,
+        password: Optional[str] = None,
     ):
         self.etcd = etcd3.client(host=host, port=port)
         self.audit_db = audit_db
         self._init_audit_db()
 
+    # For monitoring purposes,
+    #    - who made the request when
+    #    - what action was performed
+    #    - ..
     def _init_audit_db(self):
         try:
             with sqlite3.connect(self.audit_db) as conn:
