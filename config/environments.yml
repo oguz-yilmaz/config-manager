@@ -1,9 +1,13 @@
 development:
-  etcd_host: localhost
-  etcd_port: 2379
-  log_level: DEBUG
+    etcd_host: localhost
+    etcd_port: 2379
+    log_level: DEBUG
+    docker:
+        uses: "orbstack"
 
 production:
-  etcd_host: etcd.service
-  etcd_port: 2379
-  log_level: INFO
+    etcd_host: etcd.service
+    etcd_port: 2379
+    log_level: INFO
+    docker:
+        uses: "default"
