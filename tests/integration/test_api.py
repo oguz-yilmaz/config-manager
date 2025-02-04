@@ -100,7 +100,7 @@ def api_key(config_api_instance):
 
 
 @pytest.fixture(scope="function")
-def test_client(config_api_fastapi_instance):
+def test_client(config_api_fastapi_instance, etcd_container):
     """Create test client"""
     with TestClient(config_api_fastapi_instance) as client:
         yield client
