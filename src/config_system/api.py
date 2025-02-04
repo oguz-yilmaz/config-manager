@@ -74,6 +74,15 @@ class ConfigurationAPI:
             logger.info("Application components initialized successfully")
 
     def _setup_routes(self):
+        @self.app.get("/config/health")
+        async def health_check():
+            try:
+                self.app.state.config_manager.storage.ping()
+                return {"status": "healthy"}
+            except Exception as e:
+                logger.error(f"Health check failed: {str(e)}")
+                return {"status": "unhealthy"}
+
         @self.app.get("/config/{path:path}")
         @self.limiter.limit(self.config.rate_limit_read)
         async def get_config(
@@ -96,15 +105,6 @@ class ConfigurationAPI:
             # print(f"api:VALIDATING CONFIG SCHEMA {schema}")
             # print(f"api:VALIDATING CONFIG DATA {config}")
             return await self._update_config(request, path, config, schema, api_key)
-
-        @self.app.get("/health")
-        async def health_check():
-            try:
-                self.app.state.config_manager.storage.ping()
-                return {"status": "healthy"}
-            except Exception as e:
-                logger.error(f"Health check failed: {str(e)}")
-                return {"status": "unhealthy"}
 
     async def _get_config(
         self, request: Request, path: str, environment: str, api_key: str
