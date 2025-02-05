@@ -1,11 +1,13 @@
 import logging
 from datetime import datetime
 from functools import partial
+from http import HTTPStatus
 from typing import Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -17,6 +19,11 @@ from .storage import Storage
 from .validation import validate_config_schema
 
 logger = logging.getLogger(__name__)
+
+
+class ConfigUpdateRequest(BaseModel):
+    config: Dict
+    config_schema: Optional[Dict] = None
 
 
 class ConfigurationAPI:
@@ -98,28 +105,36 @@ class ConfigurationAPI:
         async def update_config(
             request: Request,
             path: str,
-            config: Dict,
-            schema: Optional[Dict] = None,
+            update_data: ConfigUpdateRequest,
             api_key: str = Depends(self.api_key_header),
         ):
-            # print(f"api:VALIDATING CONFIG SCHEMA {schema}")
-            # print(f"api:VALIDATING CONFIG DATA {config}")
-            return await self._update_config(request, path, config, schema, api_key)
+            return await self._update_config(
+                request, path, update_data.config, update_data.schema, api_key
+            )
 
     async def _get_config(
         self, request: Request, path: str, environment: str, api_key: str
     ) -> Dict:
         try:
             if not request.app.state.config_manager.verify_api_key(api_key, ["read"]):
-                raise HTTPException(status_code=403, detail="Invalid API key")
+                raise HTTPException(
+                    status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid API key"
+                )
 
             config = request.app.state.config_manager.get_config(path, environment)
             if not config:
-                raise HTTPException(status_code=404, detail="Configuration not found")
+                raise HTTPException(
+                    status_code=HTTPStatus.NOT_FOUND, detail="Configuration not found"
+                )
             return config
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error getting config {path}: {str(e)}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Internal server error",
+            )
 
     async def _update_config(
         self,
@@ -131,17 +146,25 @@ class ConfigurationAPI:
     ):
         try:
             if not request.app.state.config_manager.verify_api_key(api_key, ["write"]):
-                raise HTTPException(status_code=403, detail="Invalid API key")
+                raise HTTPException(
+                    status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid API key"
+                )
 
             if schema and not validate_config_schema(config, schema):
                 raise HTTPException(
-                    status_code=400, detail="Invalid configuration format"
+                    status_code=HTTPStatus.BAD_REQUEST,
+                    detail="Invalid configuration format",
                 )
 
             request.app.state.config_manager.update_config(path, config, api_key)
             increment_config_updates(path, "success")
             return {"status": "success"}
+        except HTTPException:
+            raise
         except Exception as e:
             increment_config_updates(path, "error")
             logger.error(f"Error updating config {path}: {str(e)}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Internal server error",
+            )

@@ -1,5 +1,6 @@
 import time
 from datetime import datetime, timedelta
+from http import HTTPStatus
 
 import docker
 import etcd3
@@ -38,7 +39,10 @@ def etcd_container(get_docker_client):
             try:
                 container.reload()
                 response = requests.get("http://localhost:2379/health")
-                return response.status_code == 200 and container.status == "running"
+                return (
+                    response.status_code == HTTPStatus.OK
+                    and container.status == "running"
+                )
             except:
                 return False
 
@@ -106,13 +110,25 @@ def test_client(config_api_fastapi_instance, etcd_container):
         yield client
 
 
-def test_get_config(test_client, api_key):
-    print("\nStarting test_get_config")
-    print("Test client ready")
-
+def test_config_manager_healthy(test_client, api_key):
     headers = {"X-API-Key": api_key}
 
     response = test_client.get("/config/health", headers=headers)
 
-    print(f"Response status: {response.status_code}")
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
+
+
+def test_can_not_access_without_api_key(test_client):
+    response = test_client.get("/config/test-config")
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert response.json() == {"detail": "Not authenticated"}
+
+
+def test_can_not_access_with_wrong_api_key(test_client):
+    headers = {"X-API-Key": "wrong-api-key"}
+
+    response = test_client.get("/config/test-config", headers=headers)
+
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert response.json() == {"detail": "Invalid API key"}
